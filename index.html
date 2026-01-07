@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P6 專案排程儀表板 (GitHub版)</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        body { margin: 0; padding: 20px; font-family: "Microsoft JhengHei", "Heiti TC", sans-serif; background-color: #f4f4f4; }
+        
+        /* --- 1. 密碼遮罩層樣式 --- */
+        #login-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 9999;
+        }
+        .login-box {
+            background: white; padding: 40px; border-radius: 12px;
+            box-shadow: 0 0 25px rgba(0,0,0,0.7); text-align: center; width: 320px;
+        }
+        .login-box h3 { margin-top: 0; color: #333; margin-bottom: 20px;}
+        .login-box input {
+            width: 100%; padding: 12px; margin: 10px 0;
+            box-sizing: border-box; border: 2px solid #ddd; border-radius: 6px;
+            font-size: 18px; text-align: center; letter-spacing: 2px;
+        }
+        .login-box button {
+            width: 100%; padding: 12px; background-color: #1f77b4;
+            color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px; margin-top: 10px;
+            transition: background 0.3s;
+        }
+        .login-box button:hover { background-color: #155a8a; }
+        #error-msg { color: #d62728; font-size: 0.9em; margin-top: 15px; display: none; font-weight: bold;}
+
+        /* --- 2. 主內容區域 --- */
+        #main-content { display: none; }
+        .container { background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        
+        h2 { text-align: center; color: #333; margin-bottom: 10px; }
+        
+        /* 切換按鈕區 */
+        .nav-buttons { text-align: center; margin-bottom: 20px; }
+        .btn-toggle {
+            padding: 10px 20px; margin: 0 5px; cursor: pointer;
+            border: 2px solid #1f77b4; background: white; color: #1f77b4;
+            border-radius: 5px; font-weight: bold; font-size: 16px;
+            transition: all 0.3s;
+        }
+        .btn-toggle:hover { background: #eef; }
+        .btn-toggle.active {
+            background: #1f77b4; color: white;
+        }
+
+        .info { text-align: center; color: #666; margin-bottom: 15px; font-size: 0.95em; background: #eef; padding: 15px; border-radius: 4px; border-left: 5px solid #1f77b4;}
+        
+        #gantt-chart { width: 100%; min-height: 800px; }
+    </style>
+</head>
+<body>
+
+<div id="login-overlay">
+    <div class="login-box">
+        <h3>🔒 專案排程系統</h3>
+        <input type="password" id="password-input" placeholder="請輸入密碼" onkeyup="if(event.keyCode===13) checkPassword()">
+        <button onclick="checkPassword()">解鎖檢視</button>
+        <div id="error-msg">⚠️ 密碼錯誤，請重試</div>
+    </div>
+</div>
+
+<div id="main-content">
+    <div class="container">
+        <h2>P6 專案排程動態儀表板</h2>
+        
+        <div class="nav-buttons">
+            <button class="btn-toggle active" id="btn-full" onclick="switchView('full')">📊 顯示完整排程 (Full WBS)</button>
+            <button class="btn-toggle" id="btn-cp" onclick="switchView('cp')">🚩 顯示關鍵路徑 (CP Only)</button>
+        </div>
+
+        <div class="info" id="info-box">
+            載入中...
+        </div>
+
+        <div id="gantt-chart"></div>
+    </div>
+</div>
+
+<script>
+    // --- 資料集定義 ---
+
+    // 1. 完整資料 (Full WBS)
+    var fullTasks = [
+        {id: "1000", name: "1000 專案啟動 (NTP) - 決標簽約", start: "2026-04-20", finish: "2026-04-20", group: "里程碑", color: "#d62728"},
+        {id: "1010", name: "1010 提送: 整體施工計畫書/安衛計畫", start: "2026-04-21", finish: "2026-06-01", group: "計畫審查", color: "#1f77b4"},
+        {id: "1020", name: "1020 核定: 整體施工計畫書", start: "2026-06-02", finish: "2026-07-13", group: "計畫審查", color: "#1f77b4"},
+        {id: "1025", name: "1025 申報: 放樣勘驗與開工通報", start: "2026-07-14", finish: "2026-08-03", group: "行政程序", color: "#1f77b4"},
+        {id: "1030", name: "1030 調查: 鄰房現況鑑定", start: "2026-04-21", finish: "2026-06-22", group: "調查作業", color: "#17becf"},
+        {id: "1040", name: "1040 提送: 交通維持計畫 (初稿)", start: "2026-04-21", finish: "2026-06-01", group: "交維計畫", color: "#9467bd"},
+        {id: "1050", name: "1050 審查: 交通局/道安會報修正", start: "2026-06-02", finish: "2026-08-03", group: "交維計畫", color: "#9467bd"},
+        {id: "1060", name: "1060 核定: 交通維持計畫 (定稿)", start: "2026-08-04", finish: "2026-09-14", group: "交維計畫", color: "#9467bd"},
+        {id: "1070", name: "1070 申辦/取得: 植栽移植許可", start: "2026-04-21", finish: "2026-06-22", group: "行政程序", color: "#1f77b4"},
+        {id: "2010", name: "2010 試拌: 預拌混凝土配比設計", start: "2026-07-14", finish: "2026-09-07", group: "材料試驗", color: "#17becf"},
+        {id: "2020", name: "2020 核定: 混凝土配比設計報告", start: "2026-09-08", finish: "2026-10-05", group: "材料試驗", color: "#17becf"},
+        {id: "2030", name: "2030 施作: 巨積混凝土模型試驗", start: "2026-10-06", finish: "2026-11-19", group: "材料試驗", color: "#17becf"},
+        {id: "3010", name: "3010 施作: 既有植栽移植與保護", start: "2026-06-23", finish: "2026-08-03", group: "現場前置", color: "#2ca02c"},
+        {id: "3020", name: "3020 申辦/取得: 道路挖掘許可證", start: "2026-09-15", finish: "2026-10-26", group: "行政程序", color: "#d62728"},
+        {id: "3030", name: "3030 架設: 施工圍籬 (Phase 1)", start: "2026-10-27", finish: "2026-11-23", group: "現場前置", color: "#2ca02c"},
+        {id: "4010", name: "4010 試挖: 地下管線試挖 (Trial Pits)", start: "2026-11-24", finish: "2026-12-21", group: "管線處理", color: "#8c564b"},
+        {id: "4020", name: "4020 排除: 地下障礙物處理 (Zone A)", start: "2026-12-22", finish: "2027-02-15", group: "管線處理", color: "#8c564b"},
+        {id: "4021", name: "4021 排除: 地下障礙物處理 (Zone B)", start: "2027-02-16", finish: "2027-04-12", group: "管線處理", color: "#8c564b"},
+        {id: "4030", name: "4030 埋設: B類管線 (特高壓/自來水)", start: "2027-04-13", finish: "2027-06-07", group: "管線處理", color: "#8c564b"},
+        {id: "4040", name: "4040 切換: 管線穿廢與公告斷管", start: "2027-10-01", finish: "2027-11-11", group: "管線處理", color: "#8c564b"},
+        {id: "4055", name: "4055 里程碑: 第一階段交維改道", start: "2027-11-12", finish: "2027-11-12", group: "里程碑", color: "#d62728"},
+        {id: "4060", name: "4060 施作: 試樁 (Test Pile) 擴座與澆置", start: "2027-11-13", finish: "2027-12-01", group: "試樁工程", color: "#2ca02c"},
+        {id: "4070", name: "4070 等待: 試樁養治期 (Curing)", start: "2027-12-02", finish: "2027-12-08", group: "試樁工程", color: "#2ca02c"},
+        {id: "4080", name: "4080 檢測: 基樁載重試驗 (Load Test)", start: "2027-12-09", finish: "2027-12-22", group: "試樁工程", color: "#2ca02c"},
+        {id: "4090", name: "4090 核定: 試樁載重試驗報告", start: "2027-12-23", finish: "2028-01-11", group: "試樁工程", color: "#2ca02c"},
+        {id: "5010", name: "5010 施作: 全套管基樁 (Zone A)", start: "2028-01-12", finish: "2028-02-22", group: "基樁工程", color: "#2ca02c"},
+        {id: "5020", name: "5020 施作: 全套管基樁 (Zone B)", start: "2028-02-23", finish: "2028-04-05", group: "基樁工程", color: "#2ca02c"},
+        {id: "5030", name: "5030 檢測/樁底灌漿 (Base Grouting)", start: "2028-04-06", finish: "2028-05-03", group: "基樁工程", color: "#2ca02c"},
+        {id: "6010", name: "6010 施作: 樁帽開挖與擋土", start: "2028-05-04", finish: "2028-05-24", group: "樁帽工程", color: "#ff7f0e"},
+        {id: "6020", name: "6020 界面: 打設接地銅棒", start: "2028-05-25", finish: "2028-05-29", group: "樁帽工程", color: "#ff7f0e"},
+        {id: "6030", name: "6030 施作: PC 澆置與樁頭處理", start: "2028-05-30", finish: "2028-06-07", group: "樁帽工程", color: "#ff7f0e"},
+        {id: "6040", name: "6040 綁紮: 樁帽鋼筋 (含墩柱預留筋)", start: "2028-06-08", finish: "2028-06-21", group: "樁帽工程", color: "#ff7f0e"},
+        {id: "6050", name: "6050 界面: 接地網熔接與測試", start: "2028-06-22", finish: "2028-06-28", group: "樁帽工程", color: "#ff7f0e"},
+        {id: "6060", name: "6060 組立: 樁帽模板", start: "2028-06-29", finish: "2028-07-05", group: "樁帽工程", color: "#ff7f0e"},
+        {id: "6065", name: "6065 查驗: 鋼筋與模板查驗", start: "2028-07-06", finish: "2028-07-06", group: "樁帽工程", color: "#ff7f0e"},
+        {id: "6070", name: "6070 澆置: 樁帽混凝土", start: "2028-07-07", finish: "2028-07-07", group: "樁帽工程", color: "#ff7f0e"},
+        {id: "6080", name: "6080 養護: 樁帽溫控養護", start: "2028-07-08", finish: "2028-07-14", group: "樁帽工程", color: "#ff7f0e"},
+        {id: "7010", name: "7010 搭設: 重型施工架與工作平台", start: "2028-07-15", finish: "2028-07-20", group: "墩柱工程", color: "#ff7f0e"},
+        {id: "7020", name: "7020 綁紮: 墩柱第一升層鋼筋", start: "2028-07-21", finish: "2028-08-03", group: "墩柱工程", color: "#ff7f0e"},
+        {id: "7030", name: "7030 界面: 預埋排水管與機電管路", start: "2028-07-21", finish: "2028-07-25", group: "墩柱工程", color: "#ff7f0e"},
+        {id: "7040", name: "7040 組立: 墩柱第一升層鋼模", start: "2028-08-04", finish: "2028-08-10", group: "墩柱工程", color: "#ff7f0e"},
+        {id: "7050", name: "7050 查驗: 墩柱鋼筋模板查驗", start: "2028-08-11", finish: "2028-08-11", group: "墩柱工程", color: "#ff7f0e"},
+        {id: "7060", name: "7060 澆置: 墩柱第一升層混凝土", start: "2028-08-12", finish: "2028-08-12", group: "墩柱工程", color: "#ff7f0e"},
+        {id: "8000", name: "8000 里程碑: 達成墩柱第一升層施作目標", start: "2028-08-12", finish: "2028-08-12", group: "里程碑", color: "#d62728"}
+    ];
+
+    // 2. 關鍵路徑資料 (CP Only - 篩選版)
+    var cpTasks = [
+        {id: "1000", name: "1000 專案啟動 (NTP) - 決標簽約", start: "2026-04-20", finish: "2026-04-20", group: "里程碑", color: "#d62728"},
+        {id: "1040", name: "1040 提送: 交通維持計畫 (初稿)", start: "2026-04-21", finish: "2026-06-01", group: "1.交維計畫 (CP)", color: "#9467bd"},
+        {id: "1050", name: "1050 審查: 交通局/道安會報修正", start: "2026-06-02", finish: "2026-08-03", group: "1.交維計畫 (CP)", color: "#9467bd"},
+        {id: "1060", name: "1060 核定: 交通維持計畫 (定稿)", start: "2026-08-04", finish: "2026-09-14", group: "1.交維計畫 (CP)", color: "#9467bd"},
+        {id: "3020", name: "3020 申辦/取得: 道路挖掘許可證", start: "2026-09-15", finish: "2026-10-26", group: "2.行政許可 (CP)", color: "#d62728"},
+        {id: "3030", name: "3030 架設: 施工圍籬 (Phase 1)", start: "2026-10-27", finish: "2026-11-23", group: "3.現場前置 (CP)", color: "#2ca02c"},
+        {id: "4010", name: "4010 試挖: 地下管線試挖 (Trial Pits)", start: "2026-11-24", finish: "2026-12-21", group: "4.管線障礙 (CP)", color: "#8c564b"},
+        {id: "4020", name: "4020 排除: 地下障礙物處理 (Zone A)", start: "2026-12-22", finish: "2027-02-15", group: "4.管線障礙 (CP)", color: "#8c564b"},
+        {id: "4021", name: "4021 排除: 地下障礙物處理 (Zone B)", start: "2027-02-16", finish: "2027-04-12", group: "4.管線障礙 (CP)", color: "#8c564b"},
+        {id: "4030", name: "4030 埋設: B類管線 (特高壓/自來水)", start: "2027-04-13", finish: "2027-06-07", group: "4.管線障礙 (CP)", color: "#8c564b"},
+        {id: "4040", name: "4040 切換: 管線穿廢 (含夏月限制)", start: "2027-10-01", finish: "2027-11-11", group: "4.管線障礙 (CP)", color: "#8c564b"},
+        {id: "4055", name: "4055 里程碑: 第一階段交維改道", start: "2027-11-12", finish: "2027-11-12", group: "里程碑", color: "#d62728"},
+        {id: "4060", name: "4060 施作: 試樁 (Test Pile) 擴座與澆置", start: "2027-11-13", finish: "2027-12-01", group: "5.試樁工程 (CP)", color: "#2ca02c"},
+        {id: "4070", name: "4070 等待: 試樁養治期 (Curing)", start: "2027-12-02", finish: "2027-12-08", group: "5.試樁工程 (CP)", color: "#2ca02c"},
+        {id: "4080", name: "4080 檢測: 基樁載重試驗 (Load Test)", start: "2027-12-09", finish: "2027-12-22", group: "5.試樁工程 (CP)", color: "#2ca02c"},
+        {id: "4090", name: "4090 核定: 試樁載重試驗報告", start: "2027-12-23", finish: "2028-01-11", group: "5.試樁工程 (CP)", color: "#2ca02c"},
+        {id: "5010", name: "5010 施作: 全套管基樁 (Zone A)", start: "2028-01-12", finish: "2028-02-22", group: "6.結構工程 (CP)", color: "#2ca02c"},
+        {id: "6010", name: "6010 施作: 樁帽開挖與擋土", start: "2028-05-04", finish: "2028-05-24", group: "6.結構工程 (CP)", color: "#ff7f0e"},
+        {id: "6070", name: "6070 澆置: 樁帽混凝土", start: "2028-07-07", finish: "2028-07-07", group: "6.結構工程 (CP)", color: "#ff7f0e"},
+        {id: "7010", name: "7010 搭設: 重型施工架", start: "2028-07-15", finish: "2028-07-20", group: "6.結構工程 (CP)", color: "#ff7f0e"},
+        {id: "7060", name: "7060 澆置: 墩柱第一升層混凝土", start: "2028-08-12", finish: "2028-08-12", group: "6.結構工程 (CP)", color: "#ff7f0e"},
+        {id: "8000", name: "8000 里程碑: 達成墩柱第一升層施作目標", start: "2028-08-12", finish: "2028-08-12", group: "里程碑", color: "#d62728"}
+    ];
+
+    // --- 功能邏輯 ---
+
+    // 1. 密碼驗證
+    function checkPassword() {
+        var input = document.getElementById('password-input').value;
+        var errorMsg = document.getElementById('error-msg');
+        
+        if (input === '2623') {
+            document.getElementById('login-overlay').style.display = 'none';
+            document.getElementById('main-content').style.display = 'block';
+            // 預設載入完整排程
+            switchView('full');
+        } else {
+            errorMsg.style.display = 'block';
+            document.getElementById('password-input').value = '';
+            document.getElementById('password-input').focus();
+        }
+    }
+
+    // 2. 切換視圖控制
+    function switchView(mode) {
+        // 更新按鈕樣式
+        var btnFull = document.getElementById('btn-full');
+        var btnCp = document.getElementById('btn-cp');
+        var infoBox = document.getElementById('info-box');
+
+        if (mode === 'full') {
+            btnFull.classList.add('active');
+            btnCp.classList.remove('active');
+            infoBox.innerHTML = "<strong>📊 完整版檢視 (Full WBS)</strong><br>包含：行政、管線、試樁、全套管基樁、樁帽、墩柱完整工序 (45項)";
+            infoBox.style.borderLeftColor = "#1f77b4";
+            renderChart(fullTasks, 'full');
+        } else {
+            btnCp.classList.add('active');
+            btnFull.classList.remove('active');
+            infoBox.innerHTML = "<strong>🚩 關鍵路徑檢視 (Critical Path)</strong><br>顯示專案驅動鏈：交維計畫 ➔ 路證 ➔ 管線遷移(夏月限制) ➔ 試樁 ➔ 結構體";
+            infoBox.style.borderLeftColor = "#d62728";
+            renderChart(cpTasks, 'cp');
+        }
+    }
+
+    // 3. 繪圖核心函數
+    function renderChart(dataSet, mode) {
+        // 深拷貝資料以反轉順序 (Plotly Bar 從下往上畫)
+        var tasks = JSON.parse(JSON.stringify(dataSet));
+        tasks.reverse();
+
+        // 共通設定
+        var xData = tasks.map(t => new Date(t.finish) - new Date(t.start) + 86400000);
+        var baseData = tasks.map(t => t.start);
+        var yData = tasks.map(t => t.name);
+        var colorData = tasks.map(t => t.color);
+        var hoverData = tasks.map(t => 
+            `<b>${t.name}</b><br>開始: ${t.start}<br>完成: ${t.finish}<br>分類: ${t.group}`
+        );
+
+        // 依據模式調整 Trace (軌跡) 設定
+        var trace = {
+            type: 'bar',
+            orientation: 'h',
+            x: xData,
+            base: baseData,
+            y: yData,
+            marker: {
+                color: colorData,
+                opacity: 0.8,
+                line: { width: 1, color: '#333' }
+            },
+            hoverinfo: 'text',
+            hovertext: hoverData
+        };
+
+        if (mode === 'cp') {
+            // CP 模式：文字顯示在 Bar 上，並自動隱藏滑桿文字
+            trace.text = yData; // 顯示作業名稱
+            trace.textposition = 'auto';
+            trace.insidetextanchor = 'start';
+            trace.textfont = { family: 'Microsoft JhengHei', color: 'black', size: 12 };
+            // 注意：不設定 constraintext: 'none'，讓 Plotly 自動隱藏滑桿區過小的文字
+        } else {
+            // Full 模式：文字顯示 Group，標準樣式
+            trace.text = tasks.map(t => t.group);
+            trace.textposition = 'auto'; // 預設
+        }
+
+        // 依據模式調整 Layout (佈局) 設定
+        var layout = {
+            height: (mode === 'full') ? 1500 : 900, // 高度調整
+            xaxis: {
+                title: '日期',
+                type: 'date',
+                tickformat: '%Y-%m',
+                automargin: true,
+                side: 'top',
+                rangeslider: {visible: true},
+                gridcolor: '#eee'
+            },
+            yaxis: {
+                automargin: true,
+                tickfont: {size: 11},
+                showgrid: true
+            },
+            margin: {l: 300, r: 50, t: 50, b: 50},
+            hovermode: 'closest',
+            dragmode: 'pan'
+        };
+
+        Plotly.newPlot('gantt-chart', [trace], layout);
+    }
+</script>
+
+</body>
+</html>
