@@ -3,12 +3,130 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>P6 專案排程儀表板 (法規合規版)</title>
+    <title>P6 專案全方位整合指揮中心</title>
+    
+    <!-- 外部函式庫 -->
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/vis-network.min.js"></script>
+
     <style>
-        body { margin: 0; padding: 20px; font-family: "Microsoft JhengHei", "Heiti TC", sans-serif; background-color: #f4f4f4; }
+        /* =========================================
+           全域樣式與系統切換器
+           ========================================= */
+        body { margin: 0; padding: 0; font-family: "Microsoft JhengHei", "Heiti TC", sans-serif; background-color: #f0f2f5; color: #333; overflow-x: hidden; }
         
-        /* --- 1. 密碼遮罩層樣式 --- */
+        /* 頂部系統導航列 */
+        #system-nav {
+            display: none; /* 登入後顯示 */
+            background: #2c3e50;
+            padding: 10px 20px;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+        }
+        .sys-btn {
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.3);
+            color: #ccc;
+            padding: 8px 20px;
+            margin: 0 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        .sys-btn:hover { background: rgba(255,255,255,0.1); color: white; }
+        .sys-btn.active { background: #1f77b4; color: white; border-color: #1f77b4; font-weight: bold; box-shadow: 0 0 10px rgba(31,119,180,0.5); }
+
+        /* 視圖容器控制 */
+        .dashboard-module { display: none; padding: 20px; animation: fadeIn 0.5s; }
+        .dashboard-module.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* =========================================
+           STYLE SET 1: 專案全景儀表板 (Overview)
+           ========================================= */
+        /* 泳道式時間軸容器 */
+        .swimlane-container {
+            display: flex; flex-direction: column; gap: 20px; overflow-x: auto; padding-bottom: 50px;
+            background: white; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); padding: 20px;
+            max-width: 1600px; margin: 0 auto;
+        }
+        .timeline-ruler { display: flex; border-bottom: 2px solid #ddd; padding-bottom: 10px; margin-left: 150px; position: relative; min-width: 1200px; }
+        .month-marker { flex: 1; text-align: left; font-size: 0.8em; color: #999; border-left: 1px dashed #eee; padding-left: 5px; height: 20px; }
+        .swimlane-row { display: flex; align-items: center; position: relative; min-width: 1200px; height: 100px; border-bottom: 1px solid #f0f0f0; }
+        .swimlane-header { width: 140px; min-width: 140px; font-weight: bold; color: #555; text-align: right; padding-right: 20px; border-right: 3px solid #eee; height: 100%; display: flex; align-items: center; justify-content: flex-end; background: white; z-index: 10; position: sticky; left: 0; }
+        .swimlane-track { flex-grow: 1; position: relative; height: 100%; }
+        
+        /* 任務節點 (Pill) */
+        .task-pill { position: absolute; top: 50%; transform: translateY(-50%); background: white; border: 2px solid #1f77b4; color: #1f77b4; padding: 5px 12px; border-radius: 20px; font-size: 0.85em; font-weight: bold; cursor: pointer; white-space: nowrap; transition: all 0.2s; z-index: 2; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .task-pill:hover { background: #1f77b4; color: white; z-index: 100; box-shadow: 0 5px 15px rgba(31, 119, 180, 0.3); }
+        .task-pill.milestone { background: #d62728; border-color: #d62728; color: white; border-radius: 4px; transform: translateY(-50%) rotate(0deg); }
+        .task-pill.milestone:hover { background: #b30000; transform: translateY(-50%) scale(1.1); }
+
+        /* Tooltip (Overview) */
+        .exec-tooltip { position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%); width: 300px; background: #333; color: #fff; padding: 15px; border-radius: 8px; font-size: 0.9em; visibility: hidden; opacity: 0; transition: opacity 0.3s; pointer-events: none; text-align: left; white-space: normal; box-shadow: 0 5px 20px rgba(0,0,0,0.3); z-index: 999; }
+        .exec-tooltip::after { content: ""; position: absolute; top: 100%; left: 50%; margin-left: -5px; border-width: 5px; border-style: solid; border-color: #333 transparent transparent transparent; }
+        .task-pill:hover .exec-tooltip { visibility: visible; opacity: 1; }
+        .tooltip-title { font-size: 1.1em; font-weight: bold; margin-bottom: 5px; color: #ffcc00; display: block;}
+        .tooltip-date { font-size: 0.8em; color: #ccc; margin-bottom: 10px; display: block; border-bottom: 1px solid #555; padding-bottom: 5px;}
+        .tooltip-note { line-height: 1.4; }
+        .note-tag { color: #ff7f50; font-weight: bold; }
+
+        /* 顏色定義 */
+        .color-admin { border-color: #1f77b4; color: #1f77b4; } .color-admin:hover { background: #1f77b4; color: white; }
+        .color-plan { border-color: #17becf; color: #17becf; } .color-plan:hover { background: #17becf; color: white; }
+        .color-site { border-color: #2ca02c; color: #2ca02c; } .color-site:hover { background: #2ca02c; color: white; }
+        .color-struct { border-color: #ff7f0e; color: #ff7f0e; } .color-struct:hover { background: #ff7f0e; color: white; }
+
+        /* =========================================
+           STYLE SET 2: PM 整合系統 (PM System)
+           ========================================= */
+        .pm-container { background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); display: flex; flex-direction: column; max-width: 1800px; margin: 0 auto; width: 100%; box-sizing: border-box; min-height: 85vh;}
+        
+        .pm-h2 { text-align: center; color: #333; margin-bottom: 5px; font-size: 1.5em; font-weight: bold;}
+        .pm-subtitle { text-align: center; color: #666; font-size: 0.9em; margin-bottom: 20px; }
+
+        /* 頂部頁籤切換 (Main Tabs) */
+        .main-tabs { display: flex; justify-content: center; margin-bottom: 20px; border-bottom: 2px solid #ddd; }
+        .tab-btn { padding: 15px 30px; cursor: pointer; font-size: 18px; font-weight: bold; color: #666; background: none; border: none; border-bottom: 4px solid transparent; transition: all 0.3s; }
+        .tab-btn:hover { color: #1f77b4; background-color: #f9f9f9; }
+        .tab-btn.active { color: #1f77b4; border-bottom: 4px solid #1f77b4; }
+
+        /* 視圖區域 */
+        .view-section { display: none; animation: fadeIn 0.5s; }
+        .view-section.active { display: block; }
+
+        /* 控制面板通用樣式 */
+        .control-panel { display: flex; justify-content: space-between; align-items: center; background: #eef; padding: 15px; border-radius: 8px; border-left: 5px solid #1f77b4; margin-bottom: 20px; flex-wrap: wrap; }
+        .control-group { display: flex; gap: 10px; align-items: center; margin-right: 20px;}
+        .control-label { font-weight: bold; color: #333; margin-right: 5px; }
+        
+        .sub-nav-buttons button { padding: 8px 16px; cursor: pointer; border: 1px solid #1f77b4; background: white; color: #1f77b4; border-radius: 4px; font-weight: bold; transition: all 0.3s; }
+        .sub-nav-buttons button.active { background: #1f77b4; color: white; }
+        
+        .spec-info { font-size: 0.85em; color: #555; }
+        .spec-tag { display: inline-block; background: #ddd; padding: 2px 6px; border-radius: 4px; margin-right: 5px; font-weight: bold; font-size: 0.8em;}
+        
+        /* 圖表容器 */
+        #gantt-chart { width: 100%; min-height: 800px; border: 1px solid #eee; }
+        #s-curve-chart { width: 100%; height: 400px; border: 1px solid #eee; margin-top: 20px;}
+        #network-container { width: 100%; height: 800px; border: 1px solid #ddd; background-color: #fff; border-radius: 4px; }
+
+        /* 網圖圖例 */
+        .legend { display: flex; justify-content: center; gap: 20px; margin-bottom: 10px; font-size: 0.9em; }
+        .legend-item { display: flex; align-items: center; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 5px; }
+        .dot.critical { background-color: #ffcccc; border: 2px solid #d62728; }
+        .dot.normal { background-color: #e6f2ff; border: 2px solid #1f77b4; }
+        .dot.milestone { background-color: #fff; border: 2px solid #d62728; transform: rotate(45deg); }
+        .dot.month-label { background-color: #eee; border: 1px dashed #666; border-radius: 0; width: 12px; height: 12px;}
+
+        /* =========================================
+           共用元件：密碼遮罩層
+           ========================================= */
         #login-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9);
@@ -33,200 +151,396 @@
         .login-box button:hover { background-color: #155a8a; }
         #error-msg { color: #d62728; font-size: 0.9em; margin-top: 15px; display: none; font-weight: bold;}
 
-        /* --- 2. 主內容區域 --- */
-        #main-content { display: none; }
-        .container { background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-        
-        h2 { text-align: center; color: #333; margin-bottom: 10px; }
-        
-        /* 切換按鈕區 */
-        .nav-buttons { text-align: center; margin-bottom: 20px; }
-        .btn-toggle {
-            padding: 10px 20px; margin: 0 5px; cursor: pointer;
-            border: 2px solid #1f77b4; background: white; color: #1f77b4;
-            border-radius: 5px; font-weight: bold; font-size: 16px;
-            transition: all 0.3s;
-        }
-        .btn-toggle:hover { background: #eef; }
-        .btn-toggle.active {
-            background: #1f77b4; color: white;
-        }
-
-        .info { text-align: center; color: #666; margin-bottom: 15px; font-size: 0.95em; background: #eef; padding: 15px; border-radius: 4px; border-left: 5px solid #1f77b4;}
-        
-        #gantt-chart { width: 100%; min-height: 800px; }
+        /* 通用標題 */
+        h2 { text-align: center; color: #2c3e50; margin-bottom: 5px; }
+        .subtitle { text-align: center; color: #7f8c8d; font-size: 0.9em; margin-bottom: 30px; }
     </style>
 </head>
 <body>
 
+<!-- 1. 統一密碼鎖 -->
 <div id="login-overlay">
     <div class="login-box">
-        <h3>🔒 專案排程系統</h3>
+        <h3>🔒 P6 專案整合指揮中心</h3>
         <input type="password" id="password-input" placeholder="請輸入密碼" onkeyup="if(event.keyCode===13) checkPassword()">
         <button onclick="checkPassword()">解鎖檢視</button>
-        <div id="error-msg">⚠️ 密碼錯誤，請重試</div>
+        <div id="error-msg">⚠️ 密碼錯誤</div>
     </div>
 </div>
 
-<div id="main-content">
-    <div class="container">
-        <h2>P6 專案排程動態儀表板 (法規合規版)</h2>
-        
-        <div class="nav-buttons">
-            <button class="btn-toggle active" id="btn-full" onclick="switchView('full')">📊 顯示完整排程 (Full WBS)</button>
-            <button class="btn-toggle" id="btn-cp" onclick="switchView('cp')">🚩 顯示關鍵路徑 (CP Only)</button>
+<!-- 2. 系統導航列 (登入後顯示) -->
+<nav id="system-nav">
+    <!-- 修改：移除「高階主管」字眼，改為「專案全景儀表板」 -->
+    <button class="sys-btn active" onclick="switchSystemModule('exec')">🏛️ 專案全景儀表板 (Overview)</button>
+    <button class="sys-btn" onclick="switchSystemModule('pm')">📊 專案管理整合系統 (PM System)</button>
+</nav>
+
+<!-- 3. 模組 A: 專案全景儀表板 (Project Overview) -->
+<div id="exec-dashboard-view" class="dashboard-module active">
+    <!-- 修改：標題移除 Executive -->
+    <h2>P6 專案執行全景圖 (Project Overview)</h2>
+    <div class="subtitle">依據作業性質分層顯示 • 滑鼠懸停查看法規與備註</div>
+
+    <div class="swimlane-container">
+        <!-- 時間尺 -->
+        <div class="timeline-ruler" id="ruler">
+            <!-- JS 生成 -->
         </div>
 
-        <div class="info" id="info-box">
-            載入中...
+        <!-- 泳道 1: 關鍵里程碑 -->
+        <div class="swimlane-row">
+            <div class="swimlane-header" style="color: #d62728; border-right-color: #d62728;">🚩 關鍵里程碑</div>
+            <div class="swimlane-track" id="track-milestone"></div>
         </div>
 
-        <div id="gantt-chart"></div>
+        <!-- 泳道 2: 行政與法規 -->
+        <div class="swimlane-row">
+            <div class="swimlane-header">📑 行政/法規</div>
+            <div class="swimlane-track" id="track-admin"></div>
+        </div>
+
+        <!-- 泳道 3: 計畫與試驗 -->
+        <div class="swimlane-row">
+            <div class="swimlane-header">🧪 計畫/試驗</div>
+            <div class="swimlane-track" id="track-plan"></div>
+        </div>
+
+        <!-- 泳道 4: 現場與管線 -->
+        <div class="swimlane-row">
+            <div class="swimlane-header">🚧 現場/管線</div>
+            <div class="swimlane-track" id="track-site"></div>
+        </div>
+
+        <!-- 泳道 5: 基礎與結構 -->
+        <div class="swimlane-row">
+            <div class="swimlane-header">🏗️ 基礎/結構</div>
+            <div class="swimlane-track" id="track-struct"></div>
+        </div>
+    </div>
+</div>
+
+<!-- 4. 模組 B: PM 整合系統 (PM Integrated System) -->
+<div id="pm-system-view" class="dashboard-module">
+    <div class="pm-container">
+        <h2 class="pm-h2">P6 專案排程整合儀表板</h2>
+        <div class="pm-subtitle">整合規範 01103 章：甘特圖、S-Curve 與 時序網圖</div>
+
+        <!-- 頂部頁籤 -->
+        <div class="main-tabs">
+            <button class="tab-btn active" onclick="switchMainTab('gantt')">📅 甘特圖與進度曲線</button>
+            <button class="tab-btn" onclick="switchMainTab('network')">🕸️ 專案邏輯網圖</button>
+        </div>
+
+        <!-- 視圖 1: 甘特圖與 S-Curve -->
+        <div id="view-gantt" class="view-section active">
+            <div class="control-panel">
+                <div class="control-group">
+                    <span class="control-label">顯示範圍:</span>
+                    <div class="sub-nav-buttons" id="scope-btns">
+                        <button class="active" onclick="setGanttScope('full', this)">📊 完整 (Full)</button>
+                        <button onclick="setGanttScope('cp', this)">🚩 要徑 (CPM)</button>
+                    </div>
+                </div>
+                <div class="spec-info">
+                    <div><span class="spec-tag">1.4.7 S-Curve</span> 預定進度累積曲線</div>
+                    <div><span class="spec-tag">3.3.2 Update</span> 資料基準日: 2026/04/20</div>
+                </div>
+            </div>
+            <div id="gantt-chart"></div>
+            <div id="s-curve-chart"></div>
+        </div>
+
+        <!-- 視圖 2: 網圖 -->
+        <div id="view-network" class="view-section">
+            <div class="control-panel">
+                <div class="control-group">
+                    <span class="control-label">網圖佈局:</span>
+                    <div class="sub-nav-buttons" id="net-layout-btns">
+                        <button class="active" onclick="setNetworkLayout('hierarchical', this)">🌲 結構佈局 (Hierarchical)</button>
+                        <button onclick="setNetworkLayout('timescaled', this)">📅 時序佈局 (X-Axis Time)</button>
+                    </div>
+                </div>
+                <div class="legend">
+                    <div class="legend-item"><div class="dot critical"></div> 關鍵路徑</div>
+                    <div class="legend-item"><div class="dot normal"></div> 一般作業</div>
+                    <div class="legend-item"><div class="dot milestone"></div> 里程碑</div>
+                    <div class="legend-item"><div class="dot month-label"></div> 月份標籤</div>
+                </div>
+            </div>
+            <div id="network-container"></div>
+        </div>
     </div>
 </div>
 
 <script>
-    // --- 資料集定義 (根據最新圖片數據輸入) ---
-
-    // 1. 完整資料 (Full WBS)
-    var fullTasks = [
-        // 1. 專案啟動與行政 (法規合規)
-        {id: "1000", name: "1000 專案啟動 (NTP) - 決標簽約", start: "2026-04-20", finish: "2026-04-20", group: "1.行政法規", color: "#d62728"},
-        {id: "1005", name: "1005 辦理: 工程保險單投保", start: "2026-04-21", finish: "2026-04-28", group: "1.行政法規", color: "#1f77b4"},
-        {id: "1010", name: "1010 提送: 整體/品質/安衛/BIM計畫", start: "2026-04-21", finish: "2026-05-06", group: "1.行政法規", color: "#1f77b4"},
-        {id: "1020", name: "1020 審查/核定: 丁類危險性工作場所評估 (危評)", start: "2026-04-21", finish: "2026-06-11", group: "1.行政法規", color: "#1f77b4"},
-        {id: "1030", name: "1030 調查: 鄰房現況鑑定", start: "2026-04-21", finish: "2026-06-11", group: "1.行政法規", color: "#17becf"},
-        {id: "1040", name: "1040 提送/核定: 環保許可 (逕流廢水/空污/廢棄物)", start: "2026-04-21", finish: "2026-05-25", group: "1.行政法規", color: "#1f77b4"},
-        {id: "1050", name: "1050 審查/核定: 交通維持計畫 (道安會報)", start: "2026-05-07", finish: "2026-06-22", group: "1.行政法規", color: "#9467bd"},
-        {id: "1060", name: "1060 申請/取得: 道路挖掘許可證 (路證)", start: "2026-05-30", finish: "2026-06-15", group: "1.行政法規", color: "#d62728"},
-        
-        // 2. 計畫與試驗 (含材料源頭)
-        {id: "2005", name: "2005 送審: 鋼筋/混凝土材料與供應商", start: "2026-05-07", finish: "2026-05-29", group: "2.計畫試驗", color: "#17becf"},
-        {id: "2010", name: "2010 試拌: 預拌混凝土配比設計 (Trial Mix)", start: "2026-05-30", finish: "2026-07-15", group: "2.計畫試驗", color: "#17becf"},
-        {id: "2020", name: "2020 核定: 混凝土配比設計報告", start: "2026-07-16", finish: "2026-08-07", group: "2.計畫試驗", color: "#17becf"},
-        {id: "2030", name: "2030 施作: 巨積混凝土模型試驗", start: "2026-08-08", finish: "2026-09-29", group: "2.計畫試驗", color: "#17becf"},
-
-        // 3. 場地準備 (實質開工)
-        {id: "3035", name: "3035 里程碑: 實質開工 (Commencement)", start: "2026-06-20", finish: "2026-06-20", group: "里程碑", color: "#d62728"},
-        {id: "3030", name: "3030 架設: 施工圍籬 (Phase 1)", start: "2026-06-22", finish: "2026-07-14", group: "3.場地準備", color: "#2ca02c"},
-        {id: "3010", name: "3010 施作: 既有植栽移植與保護", start: "2026-06-22", finish: "2026-07-14", group: "3.場地準備", color: "#2ca02c"},
-        {id: "3040", name: "3040 鋪設: 施工構台與便道", start: "2026-06-27", finish: "2026-07-14", group: "3.場地準備", color: "#2ca02c"},
-        {id: "3050", name: "3050 安裝: 監測儀器與初始讀數", start: "2026-06-27", finish: "2026-07-08", group: "3.場地準備", color: "#2ca02c"},
-        {id: "3060", name: "3060 施作: 施工測量與放樣", start: "2026-06-22", finish: "2026-06-29", group: "3.場地準備", color: "#2ca02c"},
-        {id: "3070", name: "3070 設置: 工務所與臨時水電申請", start: "2026-06-22", finish: "2026-07-25", group: "3.場地準備", color: "#2ca02c"},
-        
-        // 4. 淺層管線與試驗
-        {id: "4010", name: "4010 試挖: 基樁點位試挖", start: "2026-07-03", finish: "2026-07-14", group: "4.管線處理", color: "#8c564b"},
-        {id: "4020", name: "4020 遷移: 路燈/號誌臨時供電架設", start: "2026-07-08", finish: "2026-07-30", group: "4.管線處理", color: "#8c564b"},
-        
-        // 5. 基礎工程 (高度平行化)
-        {id: "5005", name: "5005 施作: 地質改良 (JSG) - 全區", start: "2026-07-31", finish: "2026-09-26", group: "5.基礎工程", color: "#2ca02c"},
-        {id: "5010", name: "5010 施作: 試樁 (Test Pile) 鑽掘與澆置", start: "2026-08-12", finish: "2026-09-03", group: "5.基礎工程", color: "#2ca02c"},
-        {id: "5015", name: "5015 等待/檢測: 試樁養治與載重試驗", start: "2026-09-04", finish: "2026-09-23", group: "5.基礎工程", color: "#2ca02c"},
-        {id: "5020", name: "5020 施作: 全套管基樁 (Zone A)", start: "2026-09-28", finish: "2026-11-12", group: "5.基礎工程", color: "#2ca02c"},
-        {id: "5030", name: "5030 檢測/樁底灌漿", start: "2026-11-07", finish: "2026-11-23", group: "5.基礎工程", color: "#2ca02c"},
-        {id: "5040", name: "5040 籌設: 預鑄梁場與鋼模製作", start: "2026-09-28", finish: "2027-02-13", group: "5.基礎工程", color: "#7f7f7f"},
-        
-        // 6. 樁帽工程
-        {id: "6010", name: "6010 施作: 樁帽開挖與擋土", start: "2026-11-19", finish: "2026-12-05", group: "6.樁帽工程", color: "#ff7f0e"},
-        {id: "6030", name: "6030 施作: PC 澆置/樁頭處理/接地", start: "2026-12-01", finish: "2026-12-11", group: "6.樁帽工程", color: "#ff7f0e"},
-        {id: "6040", name: "6040 綁紮: 樁帽鋼筋 (含錨栓預埋)", start: "2026-12-07", finish: "2026-12-22", group: "6.樁帽工程", color: "#ff7f0e"},
-        {id: "6050", name: "6050 界面: 接地網熔接與測試", start: "2026-12-12", finish: "2026-12-17", group: "6.樁帽工程", color: "#ff7f0e"},
-        {id: "6060", name: "6060 組立: 樁帽模板", start: "2026-12-18", finish: "2026-12-23", group: "6.樁帽工程", color: "#ff7f0e"},
-        {id: "6065", name: "6065 查驗: 鋼筋與模板查驗 (Inspection)", start: "2026-12-24", finish: "2026-12-24", group: "6.樁帽工程", color: "#ff7f0e"},
-        {id: "6070", name: "6070 澆置: 樁帽巨積混凝土", start: "2026-12-25", finish: "2026-12-25", group: "6.樁帽工程", color: "#ff7f0e"},
-        
-        // 7. 墩柱工程
-        {id: "7010", name: "7010 搭設: 重型施工架", start: "2027-01-02", finish: "2027-01-07", group: "7.墩柱工程", color: "#ff7f0e"},
-        {id: "7020", name: "7020 綁紮: 墩柱第一升層鋼筋", start: "2027-01-08", finish: "2027-01-19", group: "7.墩柱工程", color: "#ff7f0e"},
-        {id: "7030", name: "7030 界面: 預埋排水管與機電管路", start: "2027-01-08", finish: "2027-01-11", group: "7.墩柱工程", color: "#ff7f0e"},
-        {id: "7040", name: "7040 組立: 墩柱第一升層鋼模", start: "2027-01-16", finish: "2027-01-21", group: "7.墩柱工程", color: "#ff7f0e"},
-        {id: "7050", name: "7050 查驗: 墩柱鋼筋模板查驗", start: "2027-01-22", finish: "2027-01-22", group: "7.墩柱工程", color: "#ff7f0e"},
-        {id: "7060", name: "7060 澆置: 墩柱第一升層混凝土", start: "2027-01-23", finish: "2027-01-23", group: "7.墩柱工程", color: "#ff7f0e"},
-        {id: "8000", name: "8000 里程碑: 達成墩柱第一升層", start: "2027-01-23", finish: "2027-01-23", group: "里程碑", color: "#d62728"}
-    ];
-
-    // 2. 關鍵路徑資料 (CP Only - 根據 Logic 欄位追蹤)
-    // 路徑: 1000 -> 1010 -> 1050 -> 1060 -> 3035 -> 3030/3040 -> 4010/4020 -> 5005 -> 5010 -> 5015 -> 5020 -> 5030 -> 6010...
-    var cpTasks = [
-        {id: "1000", name: "1000 專案啟動 (NTP) - 決標簽約", start: "2026-04-20", finish: "2026-04-20", group: "1.專案啟動", color: "#d62728"},
-        {id: "1010", name: "1010 提送: 整體/品質/安衛/BIM計畫", start: "2026-04-21", finish: "2026-05-06", group: "1.行政法規 (CP)", color: "#1f77b4"},
-        {id: "1050", name: "1050 審查/核定: 交通維持計畫", start: "2026-05-07", finish: "2026-06-22", group: "1.行政法規 (CP)", color: "#9467bd"},
-        {id: "1060", name: "1060 申請/取得: 道路挖掘許可證", start: "2026-05-30", finish: "2026-06-15", group: "1.行政法規 (CP)", color: "#d62728"},
-        {id: "3035", name: "3035 里程碑: 實質開工", start: "2026-06-20", finish: "2026-06-20", group: "里程碑", color: "#d62728"},
-        {id: "3030", name: "3030 架設: 施工圍籬 (Phase 1)", start: "2026-06-22", finish: "2026-07-14", group: "3.場地準備 (CP)", color: "#2ca02c"},
-        {id: "3040", name: "3040 鋪設: 施工構台與便道", start: "2026-06-27", finish: "2026-07-14", group: "3.場地準備 (CP)", color: "#2ca02c"},
-        {id: "4010", name: "4010 試挖: 基樁點位試挖", start: "2026-07-03", finish: "2026-07-14", group: "4.管線處理 (CP)", color: "#8c564b"},
-        {id: "4020", name: "4020 遷移: 路燈/號誌臨時供電架設", start: "2026-07-08", finish: "2026-07-30", group: "4.管線處理 (CP)", color: "#8c564b"},
-        {id: "5005", name: "5005 施作: 地質改良 (JSG) - 全區", start: "2026-07-31", finish: "2026-09-26", group: "5.基礎工程 (CP)", color: "#2ca02c"},
-        {id: "5010", name: "5010 施作: 試樁 (Test Pile) 鑽掘與澆置", start: "2026-08-12", finish: "2026-09-03", group: "5.基礎工程 (CP)", color: "#2ca02c"},
-        {id: "5015", name: "5015 等待/檢測: 試樁養治與載重試驗", start: "2026-09-04", finish: "2026-09-23", group: "5.基礎工程 (CP)", color: "#2ca02c"},
-        {id: "5020", name: "5020 施作: 全套管基樁 (Zone A)", start: "2026-09-28", finish: "2026-11-12", group: "5.基礎工程 (CP)", color: "#2ca02c"},
-        {id: "5030", name: "5030 檢測/樁底灌漿", start: "2026-11-07", finish: "2026-11-23", group: "5.基礎工程 (CP)", color: "#2ca02c"},
-        {id: "6010", name: "6010 施作: 樁帽開挖與擋土", start: "2026-11-19", finish: "2026-12-05", group: "6.樁帽工程 (CP)", color: "#ff7f0e"},
-        {id: "6030", name: "6030 施作: PC 澆置/樁頭處理/接地", start: "2026-12-01", finish: "2026-12-11", group: "6.樁帽工程 (CP)", color: "#ff7f0e"},
-        {id: "6040", name: "6040 綁紮: 樁帽鋼筋 (含錨栓預埋)", start: "2026-12-07", finish: "2026-12-22", group: "6.樁帽工程 (CP)", color: "#ff7f0e"},
-        {id: "6050", name: "6050 界面: 接地網熔接與測試", start: "2026-12-12", finish: "2026-12-17", group: "6.樁帽工程 (CP)", color: "#ff7f0e"},
-        {id: "6060", name: "6060 組立: 樁帽模板", start: "2026-12-18", finish: "2026-12-23", group: "6.樁帽工程 (CP)", color: "#ff7f0e"},
-        {id: "6070", name: "6070 澆置: 樁帽巨積混凝土", start: "2026-12-25", finish: "2026-12-25", group: "6.樁帽工程 (CP)", color: "#ff7f0e"},
-        {id: "7010", name: "7010 搭設: 重型施工架", start: "2027-01-02", finish: "2027-01-07", group: "7.墩柱工程 (CP)", color: "#ff7f0e"},
-        {id: "7020", name: "7020 綁紮: 墩柱第一升層鋼筋", start: "2027-01-08", finish: "2027-01-19", group: "7.墩柱工程 (CP)", color: "#ff7f0e"},
-        {id: "7040", name: "7040 組立: 墩柱第一升層鋼模", start: "2027-01-16", finish: "2027-01-21", group: "7.墩柱工程 (CP)", color: "#ff7f0e"},
-        {id: "7060", name: "7060 澆置: 墩柱第一升層混凝土", start: "2027-01-23", finish: "2027-01-23", group: "7.墩柱工程 (CP)", color: "#ff7f0e"},
-        {id: "8000", name: "8000 里程碑: 達成墩柱第一升層", start: "2027-01-23", finish: "2027-01-23", group: "里程碑", color: "#d62728"}
-    ];
-
-    // --- 功能邏輯 (與原版相同) ---
-
-    // 1. 密碼驗證
+    // ==========================================
+    // 0. 系統核心控制 (System Core)
+    // ==========================================
     function checkPassword() {
         var input = document.getElementById('password-input').value;
-        var errorMsg = document.getElementById('error-msg');
-        
         if (input === '2623') {
             document.getElementById('login-overlay').style.display = 'none';
-            document.getElementById('main-content').style.display = 'block';
-            switchView('full');
+            document.getElementById('system-nav').style.display = 'block';
+            
+            // 初始化兩個模組
+            renderSwimlanes(); // Overview Init
+            updateGantt();     // PM Init
         } else {
-            errorMsg.style.display = 'block';
-            document.getElementById('password-input').value = '';
-            document.getElementById('password-input').focus();
+            document.getElementById('error-msg').style.display = 'block';
         }
     }
 
-    // 2. 切換視圖控制
-    function switchView(mode) {
-        var btnFull = document.getElementById('btn-full');
-        var btnCp = document.getElementById('btn-cp');
-        var infoBox = document.getElementById('info-box');
+    function switchSystemModule(moduleName) {
+        // 切換按鈕狀態
+        document.querySelectorAll('.sys-btn').forEach(btn => btn.classList.remove('active'));
+        event.target.classList.add('active');
 
-        if (mode === 'full') {
-            btnFull.classList.add('active');
-            btnCp.classList.remove('active');
-            infoBox.innerHTML = "<strong>📊 完整版檢視 (Full WBS)</strong><br>包含：行政法規、材料試驗、場地準備、管線、基礎、樁帽、墩柱完整工序";
-            infoBox.style.borderLeftColor = "#1f77b4";
-            renderChart(fullTasks, 'full');
-        } else {
-            btnCp.classList.add('active');
-            btnFull.classList.remove('active');
-            infoBox.innerHTML = "<strong>🚩 關鍵路徑檢視 (Critical Path)</strong><br>顯示主要路徑：交維/路證 ➔ 圍籬/構台 ➔ 臨時供電 ➔ 地質改良 ➔ 試樁 ➔ 全套管 ➔ 結構體";
-            infoBox.style.borderLeftColor = "#d62728";
-            renderChart(cpTasks, 'cp');
+        // 切換視圖顯示
+        document.querySelectorAll('.dashboard-module').forEach(div => div.classList.remove('active'));
+        
+        if (moduleName === 'exec') {
+            document.getElementById('exec-dashboard-view').classList.add('active');
+        } else if (moduleName === 'pm') {
+            document.getElementById('pm-system-view').classList.add('active');
+            // 修正 Plotly 在 display:none 切換後的寬度問題
+            setTimeout(() => {
+                Plotly.relayout('gantt-chart', { autosize: true });
+                Plotly.relayout('s-curve-chart', { autosize: true });
+            }, 100);
         }
     }
 
-    // 3. 繪圖核心函數
-    function renderChart(dataSet, mode) {
-        var tasks = JSON.parse(JSON.stringify(dataSet));
-        tasks.reverse();
+    // ==========================================
+    // 1. 專案全景儀表板邏輯 (Overview Logic)
+    // ==========================================
+    const execTasks = [
+        // 里程碑
+        {id: "1000", name: "專案啟動 (NTP)", start: "2026-04-20", group: "milestone", note: "【契約主里程碑】：工期起算日。"},
+        {id: "3035", name: "實質開工", start: "2026-06-20", group: "milestone", note: "【強制里程碑】：危評、環保、路證皆完成後，始得開工。"},
+        {id: "8000", name: "墩柱第一升層", start: "2027-01-23", group: "milestone", note: "【專案目標達成】：比原定計畫大幅提前。"},
+        // 行政
+        {id: "1005", name: "保險投保", start: "2026-04-21", group: "admin", note: "【契約第13條】：未投保不得開工。"},
+        {id: "1010", name: "計畫提送", start: "2026-04-21", group: "admin", note: "【趕工策略】：整體/品質/安衛/BIM一次性掛號。"},
+        {id: "1020", name: "危評審查", start: "2026-06-11", group: "admin", note: "【職安法】：絕對要徑，未核定不得開工。"},
+        {id: "1040", name: "環保許可", start: "2026-05-25", group: "admin", note: "【環保法規】：含逕流廢水、空污。未核定前不得架設圍籬。"},
+        {id: "1050", name: "交維核定", start: "2026-06-22", group: "admin", note: "【行政要徑】：協調交通局召開道安會報。"},
+        {id: "1060", name: "路證取得", start: "2026-06-15", group: "admin", note: "【平行作業】：交維審查後段先行掛件。"},
+        // 計畫
+        {id: "2005", name: "材料送審", start: "2026-05-07", group: "plan", note: "【源頭管理】：確認預拌廠與鋼筋廠產能。"},
+        {id: "2010", name: "配比試拌", start: "2026-05-30", group: "plan", note: "【品質計畫】：針對樁帽、墩柱進行廠內試拌。"},
+        {id: "2020", name: "配比核定", start: "2026-07-16", group: "plan", note: "【監造審查】：強度報告合格後方可核定。"},
+        {id: "2030", name: "巨積試驗", start: "2026-08-08", group: "plan", note: "【平行作業】：實質開工後同步進行。"},
+        // 現場
+        {id: "3030", name: "施工圍籬", start: "2026-06-22", group: "site", note: "【交維計畫】：依核定範圍佈設。"},
+        {id: "3010", name: "植栽移植", start: "2026-06-22", group: "site", note: "【平行作業】：圍籬架設同時進行。"},
+        {id: "3070", name: "臨時水電", start: "2026-06-22", group: "site", note: "【工地行政】：申請臨時水電及組合屋許可。"},
+        {id: "3040", name: "構台便道", start: "2026-06-27", group: "site", note: "【平行作業】：圍籬完成前段後進場。"},
+        {id: "4010", name: "管線試挖", start: "2026-07-03", group: "site", note: "【平行作業】：確認樁位無障礙。"},
+        {id: "4020", name: "管線遷移", start: "2026-07-08", group: "site", note: "【平行作業】：架設臨時架空線。"},
+        // 結構
+        {id: "5005", name: "地質改良", start: "2026-07-31", group: "struct", note: "【關鍵要徑】：JSG 機具全面進場。"},
+        {id: "5010", name: "試樁施作", start: "2026-08-12", group: "struct", note: "【平行作業】：JSG 完成第一分區後進場。"},
+        {id: "5020", name: "全套管基樁", start: "2026-09-28", group: "struct", note: "【資源接續】：試樁通過後全面展開。"},
+        {id: "5040", name: "預鑄梁場", start: "2026-09-28", group: "struct", note: "【長交期管控】：與基礎工程平行進行。"},
+        {id: "6010", name: "樁帽開挖", start: "2026-11-19", group: "struct", note: "【平行作業】：基樁養護完成區域先行開挖。"},
+        {id: "6070", name: "樁帽澆置", start: "2026-12-25", group: "struct", note: "【里程碑】：需確認模型試驗合格。"},
+        {id: "7020", name: "墩柱鋼筋", start: "2027-01-08", group: "struct", note: "【結構施工】：銜接樁帽預留筋。"},
+        {id: "7060", name: "墩柱澆置", start: "2027-01-23", group: "struct", note: "【施工規劃】：分層澆置。"}
+    ];
 
+    function renderSwimlanes() {
+        // 1. 計算時間範圍與比例
+        const startDate = new Date("2026-04-01");
+        const endDate = new Date("2027-02-28");
+        const totalDays = (endDate - startDate) / (1000 * 60 * 60 * 24);
+        const containerWidth = 1600; // 總寬度 px
+        const pxPerDay = containerWidth / totalDays;
+
+        // 2. 繪製時間尺 (Ruler)
+        const ruler = document.getElementById('ruler');
+        ruler.innerHTML = ''; // 清空重繪
+        let currDate = new Date(startDate);
+        while (currDate <= endDate) {
+            const marker = document.createElement('div');
+            marker.className = 'month-marker';
+            marker.innerText = currDate.toISOString().slice(0, 7); // YYYY-MM
+            ruler.appendChild(marker);
+            currDate.setMonth(currDate.getMonth() + 1);
+        }
+
+        // 3. 繪製任務
+        execTasks.forEach(task => {
+            const taskDate = new Date(task.start);
+            const offsetDays = (taskDate - startDate) / (1000 * 60 * 60 * 24);
+            const leftPos = offsetDays * pxPerDay;
+
+            const pill = document.createElement('div');
+            pill.className = `task-pill color-${task.group}`;
+            if (task.group === 'milestone') pill.classList.add('milestone');
+            
+            pill.style.left = `${leftPos}px`;
+            pill.innerHTML = `
+                ${task.name} <span style="font-size:0.8em; opacity:0.8">(${task.start.slice(5)})</span>
+                <div class="exec-tooltip">
+                    <span class="tooltip-title">${task.name}</span>
+                    <span class="tooltip-date">📅 開始日期: ${task.start}</span>
+                    <div class="tooltip-note">${formatNote(task.note)}</div>
+                </div>
+            `;
+
+            // 分配到對應軌道
+            let trackId = `track-${task.group}`;
+            if (task.group === 'site' || task.group === 'pipe') trackId = 'track-site';
+            
+            const track = document.getElementById(trackId);
+            if (track) track.appendChild(pill);
+        });
+    }
+
+    function formatNote(note) {
+        if (note.includes("【")) {
+            const parts = note.split("】：");
+            if (parts.length > 1) {
+                return `<span class="note-tag">${parts[0]}】：</span>${parts[1]}`;
+            }
+        }
+        return note;
+    }
+
+    // ==========================================
+    // 2. PM 整合系統邏輯 (PM System Logic)
+    // ==========================================
+    var fullTasks = [
+        {id: "1000", name: "1000 專案啟動 (NTP)", start: "2026-04-20", finish: "2026-04-20", group: "1.行政法規", color: "#d62728", duration: 0},
+        {id: "1.1", name: "1.1 辦理: 工程保險單投保", start: "2026-04-21", finish: "2026-04-28", group: "1.行政法規", color: "#1f77b4", duration: 7},
+        {id: "1.2", name: "1.2 提送: 整體/品質/安衛計畫", start: "2026-04-21", finish: "2026-05-06", group: "1.行政法規", color: "#1f77b4", duration: 14},
+        {id: "1.3", name: "1.3 審查: 危評 (丁類)", start: "2026-04-21", finish: "2026-06-11", group: "1.行政法規", color: "#1f77b4", duration: 45},
+        {id: "1.4", name: "1.4 調查: 鄰房現況鑑定", start: "2026-04-21", finish: "2026-06-11", group: "1.行政法規", color: "#17becf", duration: 45},
+        {id: "1.5", name: "1.5 許可: 環保許可", start: "2026-04-21", finish: "2026-05-25", group: "1.行政法規", color: "#1f77b4", duration: 30},
+        {id: "1.6", name: "1.6 核定: 交維計畫", start: "2026-05-07", finish: "2026-06-22", group: "1.行政法規", color: "#9467bd", duration: 40},
+        {id: "1.7", name: "1.7 取得: 道路挖掘許可", start: "2026-05-30", finish: "2026-06-15", group: "1.行政法規", color: "#d62728", duration: 14},
+        {id: "2.1", name: "2.1 送審: 材料與供應商", start: "2026-05-07", finish: "2026-05-29", group: "2.計畫試驗", color: "#17becf", duration: 20},
+        {id: "2.2", name: "2.2 試拌: 混凝土配比", start: "2026-05-30", finish: "2026-07-15", group: "2.計畫試驗", color: "#17becf", duration: 40},
+        {id: "2.3", name: "2.3 核定: 配比設計報告", start: "2026-07-16", finish: "2026-08-07", group: "2.計畫試驗", color: "#17becf", duration: 20},
+        {id: "2.4", name: "2.4 施作: 巨積混凝土試驗", start: "2026-08-08", finish: "2026-09-29", group: "2.計畫試驗", color: "#17becf", duration: 45},
+        {id: "3.1", name: "3.1 里程碑: 實質開工", start: "2026-06-20", finish: "2026-06-20", group: "里程碑", color: "#d62728", duration: 0},
+        {id: "3.2", name: "3.2 架設: 施工圍籬", start: "2026-06-22", finish: "2026-07-14", group: "3.場地準備", color: "#2ca02c", duration: 20},
+        {id: "3.3", name: "3.3 施作: 植栽移植", start: "2026-06-22", finish: "2026-07-14", group: "3.場地準備", color: "#2ca02c", duration: 20},
+        {id: "3.4", name: "3.4 鋪設: 構台與便道", start: "2026-06-27", finish: "2026-07-14", group: "3.場地準備", color: "#2ca02c", duration: 15},
+        {id: "3.5", name: "3.5 安裝: 監測儀器", start: "2026-06-27", finish: "2026-07-08", group: "3.場地準備", color: "#2ca02c", duration: 10},
+        {id: "3.6", name: "3.6 施作: 測量放樣", start: "2026-06-22", finish: "2026-06-29", group: "3.場地準備", color: "#2ca02c", duration: 7},
+        {id: "3.7", name: "3.7 設置: 工務所/水電", start: "2026-06-22", finish: "2026-07-25", group: "3.場地準備", color: "#2ca02c", duration: 30},
+        {id: "4.1", name: "4.1 試挖: 基樁點位", start: "2026-07-03", finish: "2026-07-14", group: "4.管線處理", color: "#8c564b", duration: 10},
+        {id: "4.2", name: "4.2 遷移: 臨時供電", start: "2026-07-08", finish: "2026-07-30", group: "4.管線處理", color: "#8c564b", duration: 20},
+        {id: "5.1", name: "5.1 施作: 地質改良 (JSG)", start: "2026-07-31", finish: "2026-09-26", group: "5.基礎工程", color: "#2ca02c", duration: 50},
+        {id: "5.2", name: "5.2 施作: 試樁 (Test Pile)", start: "2026-08-12", finish: "2026-09-03", group: "5.基礎工程", color: "#2ca02c", duration: 20},
+        {id: "5.3", name: "5.3 檢測: 試樁載重試驗", start: "2026-09-04", finish: "2026-09-23", group: "5.基礎工程", color: "#2ca02c", duration: 17},
+        {id: "5.4", name: "5.4 施作: 全套管基樁", start: "2026-09-28", finish: "2026-11-12", group: "5.基礎工程", color: "#2ca02c", duration: 40},
+        {id: "5.5", name: "5.5 檢測: 樁底灌漿", start: "2026-11-07", finish: "2026-11-23", group: "5.基礎工程", color: "#2ca02c", duration: 15},
+        {id: "5.6", name: "5.6 籌設: 預鑄梁場 (Float)", start: "2026-09-28", finish: "2027-02-13", group: "5.基礎工程", color: "#7f7f7f", duration: 120},
+        {id: "6.1", name: "6.1 施作: 樁帽開挖", start: "2026-11-19", finish: "2026-12-05", group: "6.樁帽工程", color: "#ff7f0e", duration: 15},
+        {id: "6.2", name: "6.2 施作: PC 澆置", start: "2026-12-01", finish: "2026-12-11", group: "6.樁帽工程", color: "#ff7f0e", duration: 10},
+        {id: "6.3", name: "6.3 綁紮: 樁帽鋼筋", start: "2026-12-07", finish: "2026-12-22", group: "6.樁帽工程", color: "#ff7f0e", duration: 14},
+        {id: "6.4", name: "6.4 界面: 接地網", start: "2026-12-12", finish: "2026-12-17", group: "6.樁帽工程", color: "#ff7f0e", duration: 5},
+        {id: "6.5", name: "6.5 組立: 樁帽模板", start: "2026-12-18", finish: "2026-12-23", group: "6.樁帽工程", color: "#ff7f0e", duration: 5},
+        {id: "6.7", name: "6.7 澆置: 樁帽混凝土", start: "2026-12-25", finish: "2026-12-25", group: "6.樁帽工程", color: "#ff7f0e", duration: 1},
+        {id: "7.1", name: "7.1 搭設: 重型施工架", start: "2027-01-02", finish: "2027-01-07", group: "7.墩柱工程", color: "#ff7f0e", duration: 5},
+        {id: "7.2", name: "7.2 綁紮: 墩柱鋼筋", start: "2027-01-08", finish: "2027-01-19", group: "7.墩柱工程", color: "#ff7f0e", duration: 10},
+        {id: "7.4", name: "7.4 組立: 墩柱鋼模", start: "2027-01-16", finish: "2027-01-21", group: "7.墩柱工程", color: "#ff7f0e", duration: 5},
+        {id: "7.6", name: "7.6 澆置: 墩柱混凝土", start: "2027-01-23", finish: "2027-01-23", group: "7.墩柱工程", color: "#ff7f0e", duration: 1},
+        {id: "8000", name: "8 里程碑: 達成墩柱第一升層", start: "2027-01-23", finish: "2027-01-23", group: "里程碑", color: "#d62728", duration: 0}
+    ];
+
+    var cpTasks = fullTasks.filter(t => 
+        ["1000", "1.2", "1.6", "1.7", "3.1", "3.2", "3.4", "4.1", "4.2", "5.1", "5.2", "5.3", "5.4", "5.5", "6.1", "6.2", "6.3", "6.4", "6.5", "6.7", "7.1", "7.2", "7.4", "7.6", "8000"].includes(t.id)
+    );
+
+    // 網圖用數據 (Nodes)
+    const networkNodesData = fullTasks.map(t => {
+        let group = 'normal';
+        let shape = 'box';
+        if (cpTasks.find(cp => cp.id === t.id)) group = 'critical';
+        if (t.duration === 0) { group = 'milestone'; shape = 'diamond'; }
+        
+        return {
+            id: t.id,
+            label: `<b>${t.name}</b>\n${t.duration}d\n${t.start}`,
+            group: group,
+            shape: shape,
+            start: t.start // 用於時序排列
+        };
+    });
+
+    // 網圖用數據 (Edges)
+    const networkEdgesData = [
+        { from: "1000", to: "1.1" }, { from: "1000", to: "1.2" }, { from: "1000", to: "1.3" }, { from: "1000", to: "1.4" }, { from: "1000", to: "1.5" },
+        { from: "1.2", to: "1.6" }, { from: "1.2", to: "2.1" },
+        { from: "1.6", to: "1.7", label: "SS+20" },
+        { from: "1.3", to: "3.1" }, { from: "1.5", to: "3.1" }, { from: "1.7", to: "3.1" },
+        { from: "2.1", to: "2.2" }, { from: "2.2", to: "2.3" }, { from: "2.3", to: "2.4" },
+        { from: "3.1", to: "3.2" }, { from: "3.1", to: "3.3" }, { from: "3.1", to: "3.6" }, { from: "3.1", to: "3.7" },
+        { from: "3.2", to: "3.4", label: "SS+5" }, { from: "3.2", to: "3.5", label: "SS+5" },
+        { from: "3.4", to: "4.1", label: "SS+5" },
+        { from: "4.1", to: "4.2", label: "SS+4" },
+        { from: "4.2", to: "5.1" },
+        { from: "5.1", to: "5.2", label: "SS+10" }, { from: "5.1", to: "5.6" }, { from: "5.1", to: "5.4" },
+        { from: "5.2", to: "5.3" },
+        { from: "5.3", to: "5.4" },
+        { from: "5.4", to: "5.5", label: "SS+35" },
+        { from: "5.5", to: "6.1", label: "SS+10" },
+        { from: "6.1", to: "6.2", label: "SS+10" },
+        { from: "6.2", to: "6.3", label: "SS+5" },
+        { from: "6.3", to: "6.4", label: "SS+5" },
+        { from: "6.4", to: "6.5" },
+        { from: "6.5", to: "6.7" }, { from: "2.4", to: "6.7" },
+        { from: "6.7", to: "7.1", label: "FS+7" },
+        { from: "7.1", to: "7.2" },
+        { from: "7.2", to: "7.4", label: "SS+7" },
+        { from: "7.4", to: "7.5" },
+        { from: "7.5", to: "7.6" },
+        { from: "7.6", to: "8000" }
+    ];
+
+    let networkInstance = null;
+    let currentGanttScope = 'full';
+    let currentNetworkLayout = 'hierarchical';
+
+    function switchMainTab(tabName) {
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        event.target.classList.add('active');
+        document.querySelectorAll('.view-section').forEach(div => div.classList.remove('active'));
+        document.getElementById('view-' + tabName).classList.add('active');
+
+        if (tabName === 'gantt') {
+            Plotly.relayout('gantt-chart', { autosize: true });
+            Plotly.relayout('s-curve-chart', { autosize: true });
+        } else if (tabName === 'network') {
+            if (!networkInstance) {
+                setTimeout(drawNetwork, 100);
+            }
+        }
+    }
+
+    // --- 甘特圖控制 ---
+    function setGanttScope(scope, btn) {
+        currentGanttScope = scope;
+        document.querySelectorAll('#scope-btns button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        updateGantt();
+    }
+
+    function updateGantt() {
+        let dataSet = (currentGanttScope === 'full') ? fullTasks : cpTasks;
+        renderGantt(dataSet);
+        renderSCurve(dataSet);
+    }
+
+    function renderGantt(dataSet) {
+        var tasks = JSON.parse(JSON.stringify(dataSet)).reverse();
         var xData = tasks.map(t => new Date(t.finish) - new Date(t.start) + 86400000);
         var baseData = tasks.map(t => t.start);
-        var yData = tasks.map(t => t.name);
         var colorData = tasks.map(t => t.color);
-        var hoverData = tasks.map(t => 
-            `<b>${t.name}</b><br>開始: ${t.start}<br>完成: ${t.finish}<br>分類: ${t.group}`
-        );
+        var yData = tasks.map(t => t.name);
 
         var trace = {
             type: 'bar',
@@ -234,47 +548,212 @@
             x: xData,
             base: baseData,
             y: yData,
-            marker: {
-                color: colorData,
-                opacity: 0.8,
-                line: { width: 1, color: '#333' }
-            },
-            hoverinfo: 'text',
-            hovertext: hoverData
+            marker: { color: colorData, opacity: 0.8, line: { width: 1, color: '#333' } },
+            hovertext: tasks.map(t => `<b>${t.name}</b><br>工期: ${t.duration}天<br>${t.start} ~ ${t.finish}`),
+            hoverinfo: 'text'
         };
 
-        if (mode === 'cp') {
-            trace.text = yData;
-            trace.textposition = 'auto';
-            trace.insidetextanchor = 'start';
-            trace.textfont = { family: 'Microsoft JhengHei', color: 'black', size: 12 };
-        } else {
-            trace.text = tasks.map(t => t.group);
-            trace.textposition = 'auto';
-        }
-
         var layout = {
-            height: (mode === 'full') ? 1400 : 900,
-            xaxis: {
-                title: '日期',
-                type: 'date',
-                tickformat: '%Y-%m',
-                automargin: true,
-                side: 'top',
-                rangeslider: {visible: true},
-                gridcolor: '#eee'
-            },
-            yaxis: {
-                automargin: true,
-                tickfont: {size: 11},
-                showgrid: true
-            },
-            margin: {l: 300, r: 50, t: 50, b: 50},
-            hovermode: 'closest',
-            dragmode: 'pan'
+            title: '專案進度甘特圖 (Gantt Chart)',
+            height: 1200,
+            xaxis: { title: '日期', type: 'date', tickformat: '%Y-%m', side: 'top', gridcolor: '#eee' },
+            yaxis: { automargin: true, tickfont: {size: 11} },
+            margin: {l: 300, r: 50, t: 80, b: 50}
         };
 
         Plotly.newPlot('gantt-chart', [trace], layout);
+    }
+
+    function renderSCurve(tasks) {
+        let sData = generateSCurveData(tasks);
+        var trace = {
+            x: sData.dates,
+            y: sData.plannedProgress,
+            mode: 'lines+markers',
+            name: '預定進度 (Planned)',
+            line: { shape: 'spline', color: '#1f77b4', width: 3 }
+        };
+        var layout = {
+            title: '預定進度 S-Curve (依規範 1.4.7)',
+            xaxis: { title: '日期', type: 'date', tickformat: '%Y-%m', gridcolor: '#eee' },
+            yaxis: { title: '累積完成百分比 (%)', range: [0, 105], gridcolor: '#eee' },
+            margin: {l: 60, r: 50, t: 50, b: 50},
+            showlegend: true
+        };
+        Plotly.newPlot('s-curve-chart', [trace], layout);
+    }
+
+    function generateSCurveData(tasks) {
+        let minDate = new Date("2026-04-20");
+        let maxDate = new Date("2027-02-13");
+        let dates = [];
+        let plannedProgress = [];
+        let totalWeight = tasks.reduce((acc, t) => acc + (t.duration || 1), 0);
+
+        for (let d = new Date(minDate); d <= maxDate; d.setDate(d.getDate() + 7)) {
+            let currentDate = new Date(d);
+            dates.push(currentDate.toISOString().split('T')[0]);
+            let currentWeight = 0;
+            tasks.forEach(t => {
+                let start = new Date(t.start);
+                let finish = new Date(t.finish);
+                if (currentDate >= finish) {
+                    currentWeight += (t.duration || 1);
+                } else if (currentDate > start) {
+                    let daysPassed = (currentDate - start) / (1000 * 60 * 60 * 24);
+                    currentWeight += daysPassed;
+                }
+            });
+            let percent = (currentWeight / totalWeight) * 100;
+            plannedProgress.push(percent > 100 ? 100 : percent);
+        }
+        return { dates, plannedProgress };
+    }
+
+    // --- 網圖控制 ---
+    function setNetworkLayout(layout, btn) {
+        currentNetworkLayout = layout;
+        document.querySelectorAll('#net-layout-btns button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        drawNetwork();
+    }
+
+    // 計算時序佈局座標 (X軸為時間)
+    function getTimeScaledPositions(nodes) {
+        const positions = {};
+        const monthGroups = {};
+        
+        // 1. 分組
+        nodes.forEach(node => {
+            if (!node.start) return;
+            const month = node.start.substring(0, 7); // YYYY-MM
+            if (!monthGroups[month]) monthGroups[month] = [];
+            monthGroups[month].push(node.id);
+        });
+
+        // 2. 排序月份
+        const sortedMonths = Object.keys(monthGroups).sort();
+        
+        // 3. 計算座標 (X軸為時間，Y軸為該月內的排列)
+        const xSpacing = 250; // 月份間距
+        const ySpacing = 120; // 同月作業間距
+        
+        // 額外生成月份標籤節點
+        const labelNodes = [];
+
+        sortedMonths.forEach((month, xIndex) => {
+            const ids = monthGroups[month];
+            const colHeight = ids.length * ySpacing;
+            const startY = -(colHeight / 2);
+            
+            // 月份標籤 (放在上方)
+            labelNodes.push({
+                id: `label-${month}`,
+                label: `<b>${month}</b>`,
+                x: xIndex * xSpacing,
+                y: -400, // 固定在上方
+                shape: 'box',
+                color: { background: '#eee', border: '#666' },
+                font: { multi: 'html', size: 16 },
+                physics: false,
+                group: 'month-label'
+            });
+
+            ids.forEach((id, yIndex) => {
+                positions[id] = {
+                    x: xIndex * xSpacing,
+                    y: startY + (yIndex * ySpacing)
+                };
+            });
+        });
+
+        return { positions, labelNodes };
+    }
+
+    function drawNetwork() {
+        if (typeof vis === 'undefined') return;
+
+        // 準備節點數據
+        let displayNodes = JSON.parse(JSON.stringify(networkNodesData));
+        let layoutOptions = {};
+        let physicsEnabled = false;
+
+        if (currentNetworkLayout === 'hierarchical') {
+            // 結構佈局：使用 Vis.js 內建層次
+            layoutOptions = {
+                hierarchical: {
+                    direction: 'LR',
+                    sortMethod: 'directed',
+                    levelSeparation: 220,
+                    nodeSpacing: 150,
+                    treeSpacing: 200,
+                    blockShifting: true,
+                    edgeMinimization: true,
+                    parentCentralization: true,
+                    shakeTowards: 'roots'
+                }
+            };
+        } else {
+            // 時序佈局：手動計算座標 (X軸時間)
+            const { positions, labelNodes } = getTimeScaledPositions(displayNodes);
+            
+            // 合併月份標籤節點
+            displayNodes = displayNodes.concat(labelNodes);
+
+            // 套用座標
+            displayNodes.forEach(node => {
+                if (positions[node.id]) {
+                    node.x = positions[node.id].x;
+                    node.y = positions[node.id].y;
+                }
+            });
+            
+            layoutOptions = { hierarchical: false }; // 關閉層次
+            physicsEnabled = false; // 關閉物理引擎以固定位置
+        }
+
+        // 樣式設定
+        const visNodes = new vis.DataSet(displayNodes.map(t => {
+            let bgColor = '#e6f2ff';
+            let borderColor = '#1f77b4';
+            if (t.group === 'critical') { bgColor = '#ffcccc'; borderColor = '#d62728'; }
+            else if (t.group === 'milestone') { bgColor = '#fff'; borderColor = '#d62728'; }
+            else if (t.group === 'month-label') { bgColor = '#eee'; borderColor = '#666'; }
+
+            return {
+                id: t.id,
+                label: t.label,
+                shape: t.shape || 'box',
+                x: t.x,
+                y: t.y,
+                color: { background: bgColor, border: borderColor, highlight: { background: '#ffffcc', border: '#333' } },
+                font: { multi: 'html', size: 14, color: '#333' },
+                margin: 10,
+                borderWidth: 2,
+                fixed: (currentNetworkLayout === 'timescaled') // 時序模式下固定節點
+            };
+        }));
+
+        const visEdges = new vis.DataSet(networkEdgesData.map(e => ({
+            from: e.from,
+            to: e.to,
+            label: e.label || '',
+            arrows: 'to',
+            color: { color: '#666', highlight: '#000' },
+            font: { align: 'top', size: 11, background: 'white' },
+            smooth: { type: 'cubicBezier', roundness: 0.5 }
+        })));
+
+        const container = document.getElementById('network-container');
+        const data = { nodes: visNodes, edges: visEdges };
+        
+        const options = {
+            layout: layoutOptions,
+            physics: { enabled: physicsEnabled },
+            interaction: { dragNodes: true, zoomView: true, dragView: true }
+        };
+
+        networkInstance = new vis.Network(container, data, options);
     }
 </script>
 
