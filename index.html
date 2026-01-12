@@ -256,4 +256,27 @@
         var layout = {
             height: (mode === 'full') ? 1400 : 900,
             xaxis: {
-                title: '日期
+                title: '日期',
+                type: 'date',
+                tickformat: '%Y-%m',
+                automargin: true,
+                side: 'top',
+                rangeslider: {visible: true},
+                gridcolor: '#eee'
+            },
+            yaxis: {
+                automargin: true,
+                tickfont: {size: 11},
+                showgrid: true
+            },
+            margin: {l: 300, r: 50, t: 50, b: 50},
+            hovermode: 'closest',
+            dragmode: 'pan'
+        };
+
+        Plotly.newPlot('gantt-chart', [trace], layout);
+    }
+</script>
+
+</body>
+</html>
